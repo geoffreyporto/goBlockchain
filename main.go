@@ -6,7 +6,11 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"strconv"
 	"time"
+
+	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
 )
 
 // Block is the building blocks of a block chain
@@ -97,14 +101,37 @@ func IsValidNewBlock(newBlock, prevBlock *Block) bool {
 }
 
 // IsValidChain checks if the chain received is valid
-func IsValidChain(newBlockchain []Block) { // TODO: pass by ref?
+func IsValidChain(newBlockchain []Block) bool { // TODO: pass by ref?
+	// newBlockchain is in JSON format
+	// Check if the genesis block matches
+	//genesisBlockRaw := []byte(newBlockchain[0])
+	//var genesisBlock Block
+	//err := json.Unmarshal(genesisBlockRaw, &genesisBlock)
+	//if err != nil {
+	//panic(err)
+	//}
+	if !reflect.DeepEqual(newBlockchain[0], blockchain[0]) {
+		return false
+	}
 
+	var tempBlocks []Block
+	tempBlocks = append(tempBlocks, newBlockchain[0])
+	for i := 1; i < len(newBlockchain); i++ {
+		if IsValidNewBlock(&newBlockchain[i], &tempBlocks[i-1]) {
+			tempBlocks = append(tempBlocks, newBlockchain[i])
+		} else {
+			return false
+		}
+	}
+
+	// All blocks are valid in the new blockchain
+	return true
 }
 
 // ReplaceChain checks and see if the current chain stored on the node needs to be replaced with
 // a more up to date version (which is validated).
 func ReplaceChain(newBlockchain []Block) { // TODO: pass by ref?
-	if IsValidChain(newBlockchain) && (len(newBlockchain) > blockchain.length) {
+	if IsValidChain(newBlockchain) && (len(newBlockchain) > len(blockchain)) {
 		log.Println("Received blockchain is valid. Replacing current blockchain with the received blockchain")
 		blockchain = newBlockchain
 		// broadcast(responseLatestMsg())
@@ -113,18 +140,61 @@ func ReplaceChain(newBlockchain []Block) { // TODO: pass by ref?
 	}
 }
 
-func InitHttpServer() {
-	s := &http.Server {
-		Addr: ":" + HttpPort,
-		Handler:
-	}
+// InitHTTPServer initializes the http server and REST api
+// TODO: refactor http portion to a new file
+func InitHTTPServer() {
+	// need to pass these into command line arguments
+	HttpPort := 3001
+
+	// setup REST interface
+	router = mux.NewRouter().StrictSlash(true)
+
+	router.HandleFunc("/blocks", GetBlocks).Methods("GET")
+	router.HandleFunc("/mineBlock", MineBlock).Methods("POST")
+	router.HandleFunc("/peers", GetPeers).Methods("GET")
+	router.HandleFunc("/addPeer", AddPeer).Methods("POST")
+
+	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(HttpPort), router))
+}
+
+// GetBlocks handles the /getBlocks REST request
+func GetBlocks(w http.ResponseWriter, r *http.Request) {
+
+}
+
+// MineBlock handles the /mineBlock REST post
+func MineBlock(w http.ResponseWriter, r *http.Request) {
+
+}
+
+// GetPeers handles the /peers REST request
+func GetPeers(w http.ResponseWriter, r *http.Request) {
+
+}
+
+// AddPeer handles the /addPeer REST post
+func AddPeer(w http.ResponseWriter, r *http.Request) {
+
+}
+
+// InitP2PServer sets up the websocket to other nodes
+func InitP2PServer() {
+	// need to pass these into command line arguments
+	//P2pPort := 6001
+
 }
 
 var blockchain []Block
+var router *mux.Router
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+}
 
 func main() {
 	//var sockets
 
+	// generate genesis block
 	blockchain = append(blockchain, *GetGensisBlock())
 
 }
