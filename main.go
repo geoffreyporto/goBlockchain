@@ -3,10 +3,11 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"reflect"
-	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -15,22 +16,32 @@ import (
 
 // Block is the building blocks of a block chain
 type Block struct {
-	index     uint64
-	timestamp int64
-	prevHash  []byte
-	data      []byte
-	hash      []byte
+	Index     uint64 `json:"id"`
+	Timestamp int64  `json:"timestamp"`
+	PrevHash  []byte `json:"prevhash"`
+	Data      []byte `json:"data"`
+	Hash      []byte `json:"hash"`
 }
 
+// Message struct
+type Message struct {
+	Type uint    `json:"type"`
+	Data []Block `json:"data"`
+}
+
+// Different message types for Message struct
 const (
 	MsgTypeQueryLatest    = 0
 	MsgTypeQueryAll       = 1
 	MsgTypeRespBlockchain = 2
 )
 
+// Other random constants
 const (
-	HashLen = 32
-	IntSize = 8
+	EnvPort     = "PORT"
+	DefaultPort = "3001"
+	HashLen     = 32
+	IntSize     = 8
 )
 
 // CalculateHash calculates the hash of a block
@@ -59,20 +70,20 @@ func CalculateHash(index uint64, ts int64, prevHash []byte, data []byte) []byte 
 
 // CalculateHashForBlock calculates the has for the block
 func CalculateHashForBlock(block *Block) []byte {
-	return CalculateHash(block.index, block.timestamp, block.prevHash, block.data)
+	return CalculateHash(block.Index, block.Timestamp, block.PrevHash, block.Data)
 }
 
 // GenerateNextBlock generates next block in the chain
 func GenerateNextBlock(blockData []byte) *Block {
 	prevBlock := GetLatestBlock()
-	nextIndex := prevBlock.index + 1
+	nextIndex := prevBlock.Index + 1
 	nextTimestamp := time.Now().UTC().Unix()
-	nextHash := CalculateHash(nextIndex, nextTimestamp, prevBlock.prevHash, blockData)
-	return &Block{nextIndex, nextTimestamp, prevBlock.prevHash, blockData, nextHash}
+	nextHash := CalculateHash(nextIndex, nextTimestamp, prevBlock.PrevHash, blockData)
+	return &Block{nextIndex, nextTimestamp, prevBlock.PrevHash, blockData, nextHash}
 }
 
-// GetGensisBlock generates and returns the genesis block
-func GetGensisBlock() *Block {
+// GetGenesisBlock generates and returns the genesis block
+func GetGenesisBlock() *Block {
 	var e = make([]byte, HashLen)
 	timeNow := time.Now().UTC().Unix()
 	genesisHash := CalculateHash(0, timeNow, e, e)
@@ -85,16 +96,31 @@ func GetLatestBlock() *Block {
 	return &blockchain[len(blockchain)-1]
 }
 
+// QueryChainLengthMsg generates a Message with type QueryLatest
+func QueryChainLengthMsg() *Message {
+	return &Message{MsgTypeQueryLatest, []Block{}}
+}
+
+// QueryAllMsg generates a Message with type QueryAll
+func QueryAllMsg() *Message {
+	return &Message{MsgTypeQueryAll, []Block{}}
+}
+
+// RespChainMsg generates a Message with type RespBlockchain and data of the full blockchain
+func RespChainMsg() *Message {
+	return &Message{MsgTypeRespBlockchain, blockchain}
+}
+
 // IsValidNewBlock checks the integrity of the newest block
 func IsValidNewBlock(newBlock, prevBlock *Block) bool {
-	if prevBlock.index+1 != newBlock.index {
+	if prevBlock.Index+1 != newBlock.Index {
 		log.Println("IsValidNewBlock(): invalid index")
 		return false
-	} else if !reflect.DeepEqual(prevBlock.hash, newBlock.prevHash) {
+	} else if !reflect.DeepEqual(prevBlock.Hash, newBlock.PrevHash) {
 		log.Println("IsValidNewBlock(): invalid previous hash")
 		return false
-	} else if !reflect.DeepEqual(CalculateHashForBlock(newBlock), newBlock.hash) {
-		log.Println("invalid hash: %x is not %x", CalculateHashForBlock(newBlock), newBlock.hash)
+	} else if !reflect.DeepEqual(CalculateHashForBlock(newBlock), newBlock.Hash) {
+		log.Printf("invalid hash: %x is not %x\n", CalculateHashForBlock(newBlock), newBlock.Hash)
 		return false
 	}
 	return true
@@ -104,12 +130,6 @@ func IsValidNewBlock(newBlock, prevBlock *Block) bool {
 func IsValidChain(newBlockchain []Block) bool { // TODO: pass by ref?
 	// newBlockchain is in JSON format
 	// Check if the genesis block matches
-	//genesisBlockRaw := []byte(newBlockchain[0])
-	//var genesisBlock Block
-	//err := json.Unmarshal(genesisBlockRaw, &genesisBlock)
-	//if err != nil {
-	//panic(err)
-	//}
 	if !reflect.DeepEqual(newBlockchain[0], blockchain[0]) {
 		return false
 	}
@@ -130,7 +150,7 @@ func IsValidChain(newBlockchain []Block) bool { // TODO: pass by ref?
 
 // ReplaceChain checks and see if the current chain stored on the node needs to be replaced with
 // a more up to date version (which is validated).
-func ReplaceChain(newBlockchain []Block) { // TODO: pass by ref?
+func ReplaceChain(newBlockchain []Block) {
 	if IsValidChain(newBlockchain) && (len(newBlockchain) > len(blockchain)) {
 		log.Println("Received blockchain is valid. Replacing current blockchain with the received blockchain")
 		blockchain = newBlockchain
@@ -140,11 +160,21 @@ func ReplaceChain(newBlockchain []Block) { // TODO: pass by ref?
 	}
 }
 
+// AddBlock validates and adds new block to blockchain
+func AddBlock(newBlock Block) {
+	if IsValidNewBlock(&newBlock, GetLatestBlock()) {
+		blockchain = append(blockchain, newBlock)
+	}
+}
+
 // InitHTTPServer initializes the http server and REST api
-// TODO: refactor http portion to a new file
 func InitHTTPServer() {
 	// need to pass these into command line arguments
-	HttpPort := 3001
+	// Get Env variable for HTTPPort
+	port = os.Getenv(EnvPort)
+	if port == "" {
+		port = DefaultPort
+	}
 
 	// setup REST interface
 	router = mux.NewRouter().StrictSlash(true)
@@ -153,28 +183,111 @@ func InitHTTPServer() {
 	router.HandleFunc("/mineBlock", MineBlock).Methods("POST")
 	router.HandleFunc("/peers", GetPeers).Methods("GET")
 	router.HandleFunc("/addPeer", AddPeer).Methods("POST")
+	// Starts websocket connections for peers
+	router.HandleFunc("/ws", HandleWSConnection)
 
-	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(HttpPort), router))
+	log.Fatal(http.ListenAndServe(":"+port, router))
 }
 
-// GetBlocks handles the /getBlocks REST request
+// GetBlocks handles the /blocks REST request
 func GetBlocks(w http.ResponseWriter, r *http.Request) {
-
+	// Send a copy of this node's blockchain
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(blockchain)
 }
 
 // MineBlock handles the /mineBlock REST post
 func MineBlock(w http.ResponseWriter, r *http.Request) {
-
+	// Checks for the block in data field
+	//params := mux.Vars(r)
+	var block Block
+	err := json.NewDecoder(r.Body).Decode(&block)
+	if err != nil {
+		log.Println("MineBlock: Received block failed to prase(JSON)")
+	}
+	AddBlock(block)
+	//broadcast(responseLatestMsg())
 }
 
 // GetPeers handles the /peers REST request
 func GetPeers(w http.ResponseWriter, r *http.Request) {
-
+	// Sends list of peers this node is connected to
+	log.Println("----Peers----")
+	peersStr := ""
+	for k, v := range sockets {
+		if v == true {
+			log.Println(k.RemoteAddr().String())
+			peersStr += k.RemoteAddr().String()
+			peersStr += ","
+		}
+	}
+	json.NewEncoder(w).Encode(peersStr)
 }
 
 // AddPeer handles the /addPeer REST post
 func AddPeer(w http.ResponseWriter, r *http.Request) {
+	// Connect to the peer
+	params := mux.Vars(r)
+	var newPeers string
 
+	err := json.NewDecoder(r.Body).Decode(&newPeers)
+	if err != nil {
+		log.Println("AddPeer: could not decode peer")
+	}
+
+	ConnectToPeers(newPeers)
+}
+
+// HandleWSConnection handles websocket connections to peers(other nodes)
+func HandleWSConnection(w http.ResponseWriter, r *http.Request) {
+	// Upgrade initial GET request to a websocket
+	ws, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer ws.Close()
+	// Register our new client
+	sockets[ws] = true
+
+	for {
+		var msg Message
+		// Read in new message as JSON and map it to a Message object
+		err := ws.ReadJSON(&msg)
+		if err != nil {
+			log.Println(err)
+			delete(sockets, ws)
+		}
+		// Send the newly received message to the broadcast channel
+		broadcast <- msg
+	}
+}
+
+// HandleMessages handles the broadcast of messages over websocket
+func HandleMessages() {
+	for {
+		// Grab the next message from the broadcast channel
+		msg := <-broadcast
+		// Send it out to every client that is currently connected
+		for peer := range sockets {
+			switch msg.Type {
+			case MsgTypeQueryAll:
+				// TODO: write response chain message
+			case MsgTypeQueryLatest:
+				// TODO: write response latest msg
+			case MsgTypeRespBlockchain:
+				// TODO: handleBlockchainResponse
+			default:
+				log.Fatal("Unknown message type")
+			}
+			err := peer.WriteJSON(msg)
+			if err != nil {
+				log.Println(err)
+				peer.Close()
+				delete(sockets, peer)
+			}
+		}
+	}
 }
 
 // InitP2PServer sets up the websocket to other nodes
@@ -185,16 +298,21 @@ func InitP2PServer() {
 }
 
 var blockchain []Block
+var port string
 var router *mux.Router
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 }
 
+var sockets = make(map[*websocket.Conn]bool) // connected clients
+var broadcast = make(chan Message)           // broadcast channel
+
 func main() {
 	//var sockets
 
 	// generate genesis block
-	blockchain = append(blockchain, *GetGensisBlock())
+	var genesisBlock = *GetGenesisBlock()
+	blockchain = append(blockchain, genesisBlock)
 
 }
