@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -227,7 +229,7 @@ func GetPeers(w http.ResponseWriter, r *http.Request) {
 // AddPeer handles the /addPeer REST post
 func AddPeer(w http.ResponseWriter, r *http.Request) {
 	// Connect to the peer
-	params := mux.Vars(r)
+	//params := mux.Vars(r)
 	var newPeers string
 
 	err := json.NewDecoder(r.Body).Decode(&newPeers)
@@ -290,11 +292,31 @@ func HandleMessages() {
 	}
 }
 
-// InitP2PServer sets up the websocket to other nodes
-func InitP2PServer() {
-	// need to pass these into command line arguments
-	//P2pPort := 6001
+// InitConnection sets up the socket to pass messages
+func InitConnection(c *websocket.Conn) {
+	sockets[c] = true
+	InitMessageHandler(c)
+	InitErrorHandler(c)
+	// TODO: Query chain length
+}
 
+// InitMessageHandler sets up the different types of messages it can receive
+
+// ConnectToPeers connects to the peers' addr:port by first parsing the string with the format
+// addr1:port1, addr2:port2,...
+func ConnectToPeers(newPeers string) {
+	peers := strings.Split(newPeers, ",")
+	for _, peer := range peers {
+		// connect to peer
+		u := url.URL{Scheme: "ws", Host: peer, Path: "/ws"}
+		log.Printf("Connecting to %s", u.String())
+
+		c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+		if err != nil {
+			log.Fatal("dial:", err)
+		}
+		InitConnection(c)
+	}
 }
 
 var blockchain []Block
