@@ -6,17 +6,9 @@ import (
 	"testing"
 )
 
-func TestCalculateHash(t *testing.T) {
-	var v []byte
-	e := make([]byte, 32)
-	v = CalculateHash(1, -1, e, e)
-	if len(v) != 32 {
-		t.Error("Unexpected hash length")
-	}
-}
-
 func TestMarshalling(t *testing.T) {
-	var block = *GetGenesisBlock()
+	b := new(Blockchain)
+	var block = *b.GetGenesisBlock()
 	blockMarshalled, err := json.Marshal(block)
 	if err != nil {
 		t.Error(err)

@@ -22,13 +22,14 @@ type Blockchain struct {
 	blockchain []Block
 }
 
+// Constants
 const (
 	HashLen = 32
 	IntSize = 8
 )
 
 // Init initializes blockchain struct by creating gensis block
-func Init(b *Blockchain) {
+func (b *Blockchain) Init() {
 	// Generate genesis block
 	var e = make([]byte, HashLen)
 	timeNow := time.Now().UTC().Unix()
@@ -69,7 +70,7 @@ func CalculateHashForBlock(block *Block) []byte {
 }
 
 // GenerateNextBlock generates next block in the chain
-func GenerateNextBlock(b *Blockchain, blockData []byte) *Block {
+func (b *Blockchain) GenerateNextBlock(blockData []byte) *Block {
 	prevBlock := b.GetLatestBlock()
 	nextIndex := prevBlock.Index + 1
 	nextTimestamp := time.Now().UTC().Unix()
@@ -79,7 +80,7 @@ func GenerateNextBlock(b *Blockchain, blockData []byte) *Block {
 }
 
 // GetGenesisBlock retrives the first block in the chain
-func GetGenesisBlock(b *Blockchain) *Block {
+func (b *Blockchain) GetGenesisBlock() *Block {
 	if len(b.blockchain) < 1 {
 		log.Println("Did not initialize blockchain")
 	}
@@ -111,7 +112,7 @@ func IsValidNewBlock(newBlock, prevBlock *Block) bool {
 func IsValidChain(newBlockchain []Block) bool { // TODO: pass by ref?
 	// newBlockchain is in JSON format
 	// Check if the genesis block matches
-	if !reflect.DeepEqual(newBlockchain[0], blockchain[0]) {
+	if !reflect.DeepEqual(newBlockchain[0], b.blockchain[0]) {
 		return false
 	}
 
@@ -127,4 +128,26 @@ func IsValidChain(newBlockchain []Block) bool { // TODO: pass by ref?
 
 	// All blocks are valid in the new blockchain
 	return true
+}
+
+// ReplaceChain checks and see if the current chain stored on the node needs to be replaced with
+// a more up to date version (which is validated).
+func (b *Blockchain) ReplaceChain(newBlockchain []Block) {
+	if IsValidChain(newBlockchain) && (len(newBlockchain) > len(b.blockchain)) {
+		log.Println("Received blockchain is valid. Replacing current blockchain with the received blockchain")
+		b.blockchain = newBlockchain
+		// broadcast the new chain
+		broadcastMsg(RespChainMsg())
+	} else {
+		log.Println("Received blockchain invalid")
+	}
+}
+
+// AddBlock validates and adds new block to blockchain
+func (b *Blockchain) AddBlock(newBlock Block) bool {
+	if IsValidNewBlock(&newBlock, b.GetLatestBlock()) {
+		b.blockchain = append(b.blockchain, newBlock)
+		return true
+	}
+	return false
 }
