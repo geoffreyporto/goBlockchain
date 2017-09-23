@@ -4,10 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"log"
-<<<<<<< HEAD
 	"reflect"
-=======
->>>>>>> 167e2284bd51e29b581146319b5ab391bb7cca1a
 	"time"
 )
 
