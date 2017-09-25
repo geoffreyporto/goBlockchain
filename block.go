@@ -132,12 +132,12 @@ func IsValidChain(newBlockchain []Block) bool { // TODO: pass by ref?
 
 // ReplaceChain checks and see if the current chain stored on the node needs to be replaced with
 // a more up to date version (which is validated).
-func (b *Blockchain) ReplaceChain(newBlockchain []Block) {
+func (b *Blockchain) ReplaceChain(hub *Hub, newBlockchain []Block) {
 	if IsValidChain(newBlockchain) && (len(newBlockchain) > len(b.blockchain)) {
 		log.Println("Received blockchain is valid. Replacing current blockchain with the received blockchain")
 		b.blockchain = newBlockchain
 		// broadcast the new chain
-		broadcastMsg(RespChainMsg())
+		hub.broadcastMsg(RespChainMsg())
 	} else {
 		log.Println("Received blockchain invalid")
 	}

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -18,7 +19,8 @@ type Message struct {
 	Data []Block `json:"data"`
 }
 
-var addr = flag.String("addr", ":9001", "http service address")
+var addr = flag.String("addr", "localhost:9001", "http service address")
+var initialPeers = flag.String("peers", "", "initial peers with the format host1:port1,host2:port2,...")
 
 // Different message types for Message struct
 const (
@@ -44,6 +46,9 @@ func InitHTTPServer(router *mux.Router, hub *Hub) {
 		serveWs(hub, w, r)
 	})
 
+	go ConnectToPeers(*initialPeers)
+
+	log.Printf("Listening on %s", *addr)
 	log.Fatal(http.ListenAndServe(*addr, router))
 }
 
@@ -74,58 +79,67 @@ func GetPeers(w http.ResponseWriter, r *http.Request) {
 	// Sends list of peers this node is connected to
 	log.Println("----Peers----")
 	peersStr := ""
+	log.Println(len(hub.peers))
 	for peer, v := range hub.peers {
 		if v == true {
+			log.Println("TRUE")
 			log.Println(peer.conn.RemoteAddr().String())
 			peersStr += peer.conn.RemoteAddr().String()
 			peersStr += ","
 		}
 	}
-	json.NewEncoder(w).Encode(peersStr)
+	log.Printf("GetPeers: data=%s\n", peersStr)
+	var p peerStr
+	p.Peer = peersStr
+	json.NewEncoder(w).Encode(p)
+}
+
+type peerStr struct {
+	Peer string `json:"peer"`
 }
 
 // AddPeer handles the /addPeer REST post
 func AddPeer(w http.ResponseWriter, r *http.Request) {
 	// Connect to the peer
-	//params := mux.Vars(r)
-	var newPeers string
+	var newPeers peerStr
 
 	err := json.NewDecoder(r.Body).Decode(&newPeers)
 	if err != nil {
 		log.Println("AddPeer: could not decode peer")
 	}
+	log.Println(newPeers)
+	log.Printf("AddPeer: adding=%s", newPeers.Peer)
 
-	ConnectToPeers(newPeers)
+	ConnectToPeers(newPeers.Peer)
 }
 
-/*
-// HandleMessages handles the broadcast of messages over websocket
-func HandleMessages() {
-	for {
-		// Grab the next message from the broadcast channel
-		msg := <-broadcast
-		// Send it out to every client that is currently connected
-		for peer := range sockets {
-			switch msg.Type {
-			case MsgTypeQueryAll:
-				// TODO: write response chain message
-			case MsgTypeQueryLatest:
-				// TODO: write response latest msg
-			case MsgTypeRespBlockchain:
-				// TODO: handleBlockchainResponse
-			default:
-				log.Fatal("Unknown message type")
+// HandleBlockchainResp
+func (m *Message) HandleBlockchainResp() {
+	// TODO: check if arrays that are unmarshalled are in the order pre marshalling
+	latestBlockReceived := m.Data[len(m.Data)-1]
+	latestBlockHeld := *b.GetLatestBlock()
+
+	if latestBlockReceived.Index > latestBlockHeld.Index {
+		log.Println("HandleBlockchainResp: blockchain is not the latest")
+		if reflect.DeepEqual(latestBlockHeld.Hash, latestBlockReceived.PrevHash) {
+			if b.AddBlock(latestBlockReceived) {
+				// append new block to our chain
+				hub.broadcastMsg(RespLatestMsg())
+			} else {
+				log.Println("HandleBlockchainResp: AddBlock failed")
 			}
-			err := peer.WriteJSON(msg)
-			if err != nil {
-				log.Println(err)
-				peer.Close()
-				delete(sockets, peer)
-			}
+		} else if len(m.Data) == 1 {
+			// query chain from peer
+			hub.broadcastMsg(QueryAllMsg())
+		} else {
+			// received blockchain is longer, therefore replace held chain
+			b.ReplaceChain(hub, m.Data)
 		}
+	} else {
+		log.Println("HandleBlockchainResp: do nothing.received chain shorter")
 	}
 }
-*/
+
 // QueryChainLengthMsg generates a Message with type QueryLatest
 func QueryChainLengthMsg() *Message {
 	return &Message{MsgTypeQueryLatest, []Block{}}
@@ -161,6 +175,11 @@ func broadcastMsg(h *Hub, m *Message) {
 // addr1:port1, addr2:port2,...
 func ConnectToPeers(newPeers string) {
 	peers := strings.Split(newPeers, ",")
+	log.Println(peers)
+	log.Println(len(peers))
+	if peers[0] == "" {
+		return
+	}
 	for _, peer := range peers {
 		// connect to peer
 		u := url.URL{Scheme: "ws", Host: peer, Path: "/ws"}
@@ -181,6 +200,10 @@ func main() {
 	// Create the blockchain for this node
 	b = new(Blockchain)
 	b.Init()
+
+	// Setup hub for websocket connectsion
+	hub = newHub()
+	go hub.run()
 
 	var router *mux.Router
 	InitHTTPServer(router, hub)
