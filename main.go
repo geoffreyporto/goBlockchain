@@ -79,16 +79,13 @@ func GetPeers(w http.ResponseWriter, r *http.Request) {
 	// Sends list of peers this node is connected to
 	log.Println("----Peers----")
 	peersStr := ""
-	log.Println(len(hub.peers))
 	for peer, v := range hub.peers {
 		if v == true {
-			log.Println("TRUE")
-			log.Println(peer.conn.RemoteAddr().String())
 			peersStr += peer.conn.RemoteAddr().String()
 			peersStr += ","
 		}
 	}
-	log.Printf("GetPeers: data=%s\n", peersStr)
+	//log.Printf("GetPeers: data=%s\n", peersStr)
 	var p peerStr
 	p.Peer = peersStr
 	json.NewEncoder(w).Encode(p)

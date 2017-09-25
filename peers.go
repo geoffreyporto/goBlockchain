@@ -67,11 +67,10 @@ func (h *Hub) run() {
 	for {
 		select {
 		case peer := <-h.register:
-			log.Println(peer.conn.RemoteAddr().String())
 			h.peers[peer] = true
-			log.Println("Registering: ", h.peers[peer])
+			log.Println("Registering: ", peer)
 		case peer := <-h.unregister:
-			log.Println("Unregister")
+			log.Println("Unregister: ", peers)
 			if _, ok := h.peers[peer]; ok {
 				delete(h.peers, peer)
 				close(peer.send)
@@ -119,10 +118,8 @@ func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 
 // addWs adds new websocket connection to the hub
 func addWs(hub *Hub, conn *websocket.Conn) {
-	log.Println("addWs: Beginning")
 	peer := &Peer{hub: hub, conn: conn, send: make(chan []byte, 256)}
 	peer.hub.register <- peer
-	log.Println("addWs: after register")
 	// query for the longest chain
 	if err := peer.conn.WriteJSON(QueryChainLengthMsg()); err != nil {
 		log.Println("addWS: failed to query longest chain")
@@ -144,21 +141,21 @@ func (p *Peer) readPump() {
 		p.hub.unregister <- p
 		p.conn.Close()
 	}()
-	// TODO: websockets is disconnecting
-	//p.conn.SetReadLimit(maxMessageSize)
-	//p.conn.SetReadDeadline(time.Now().Add(pongWait))
-	//p.conn.SetPongHandler(func(string) error { p.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+	p.conn.SetReadLimit(maxMessageSize)
+	p.conn.SetReadDeadline(time.Now().Add(pongWait))
+	p.conn.SetPongHandler(func(string) error { p.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 
 	for {
 		var receivedMsg Message
-		err := p.conn.ReadJSON(receivedMsg)
+		err := p.conn.ReadJSON(&receivedMsg)
 		if err != nil {
+			log.Printf("error: %v", err)
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
-				log.Printf("error: %v", err)
+				log.Printf("unexpected close error: %v", err)
 			}
-			log.Printf("readPump: error")
 			break
 		}
+		// Do the writing in the writePump()
 		switch receivedMsg.Type {
 		case MsgTypeQueryAll:
 			//write response chain message
