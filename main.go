@@ -59,16 +59,20 @@ func GetBlocks(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(b.blockchain)
 }
 
+type BlockData struct {
+	Data string `json:"data"`
+}
+
 // MineBlock handles the /mineBlock REST post
 func MineBlock(w http.ResponseWriter, r *http.Request) {
 	// Checks for the block in data field
-	//params := mux.Vars(r)
-	var block Block
-	err := json.NewDecoder(r.Body).Decode(&block)
+	var data BlockData
+	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
 		log.Println("MineBlock: Received block failed to prase(JSON)")
 	}
-	success := b.AddBlock(block)
+
+	success := b.GenerateNextBlock(data.Data)
 	if success {
 		hub.broadcastMsg(RespLatestMsg())
 	}
@@ -77,7 +81,6 @@ func MineBlock(w http.ResponseWriter, r *http.Request) {
 // GetPeers handles the /peers REST request
 func GetPeers(w http.ResponseWriter, r *http.Request) {
 	// Sends list of peers this node is connected to
-	log.Println("----Peers----")
 	peersStr := ""
 	for peer, v := range hub.peers {
 		if v == true {
@@ -115,21 +118,30 @@ func (m *Message) HandleBlockchainResp() {
 	// TODO: check if arrays that are unmarshalled are in the order pre marshalling
 	latestBlockReceived := m.Data[len(m.Data)-1]
 	latestBlockHeld := *b.GetLatestBlock()
+	//log.Println(latestBlockReceived)
 
 	if latestBlockReceived.Index > latestBlockHeld.Index {
 		log.Println("HandleBlockchainResp: blockchain is not the latest")
+		//log.Println("latestBlockHeld.Hash: ", latestBlockHeld.Hash)
+		//log.Println("latestBlockReceived.PrevHash: ", latestBlockReceived.PrevHash)
+		//log.Println("latestBlockReceived.Data: ", latestBlockReceived.Data)
+		//log.Println("latestBlockReceived.Hash: ", latestBlockReceived.Hash)
 		if reflect.DeepEqual(latestBlockHeld.Hash, latestBlockReceived.PrevHash) {
+			log.Println("newHash and Prevhash matches")
 			if b.AddBlock(latestBlockReceived) {
 				// append new block to our chain
+				log.Println("HandleBlockchainResp: Added block")
 				hub.broadcastMsg(RespLatestMsg())
 			} else {
 				log.Println("HandleBlockchainResp: AddBlock failed")
 			}
 		} else if len(m.Data) == 1 {
 			// query chain from peer
+			log.Println("HandleBlockchainResp: len 1")
 			hub.broadcastMsg(QueryAllMsg())
 		} else {
 			// received blockchain is longer, therefore replace held chain
+			log.Println("HandleBlockchainResp: replacing chain")
 			b.ReplaceChain(hub, m.Data)
 		}
 	} else {
@@ -157,15 +169,6 @@ func RespLatestMsg() *Message {
 	block := make([]Block, 1)
 	block[0] = *b.GetLatestBlock()
 	return &Message{MsgTypeRespBlockchain, block}
-}
-
-// broadcastMsg to all peers
-func broadcastMsg(h *Hub, m *Message) {
-	b, err := json.Marshal(m)
-	if err != nil {
-		log.Println("broadcastMsg: msg failed to convert to []byte")
-	}
-	hub.broadcast <- b
 }
 
 // ConnectToPeers connects to the peers' addr:port by first parsing the string with the format

@@ -70,12 +70,13 @@ func (h *Hub) run() {
 			h.peers[peer] = true
 			log.Println("Registering: ", peer)
 		case peer := <-h.unregister:
-			log.Println("Unregister: ", peers)
+			log.Println("Unregister: ", peer)
 			if _, ok := h.peers[peer]; ok {
 				delete(h.peers, peer)
 				close(peer.send)
 			}
 		case message := <-h.broadcast:
+			log.Println("Broadcasting: ", message)
 			for peer := range h.peers {
 				select {
 				case peer.send <- message:
@@ -90,7 +91,8 @@ func (h *Hub) run() {
 
 // TODO: use this vs using p.conn.WriteJSON()
 func (p *Peer) sendMsg(m *Message) {
-	encodedMsg, err := json.Marshal(m)
+	encodedMsg, err := json.Marshal(*m)
+	//encodedMsg, err := binary.Write(m)
 	if err != nil {
 		log.Println("sendMsg: msg failed to convert to []byte")
 	}
@@ -99,10 +101,11 @@ func (p *Peer) sendMsg(m *Message) {
 
 // broadcastMsg to all peers
 func (h *Hub) broadcastMsg(m *Message) {
-	b, err := json.Marshal(m)
+	b, err := json.Marshal(*m)
 	if err != nil {
 		log.Println("broadcastMsg: msg failed to convert to []byte")
 	}
+	log.Println("brodcastMsg: ", m)
 	hub.broadcast <- b
 }
 
@@ -121,14 +124,17 @@ func addWs(hub *Hub, conn *websocket.Conn) {
 	peer := &Peer{hub: hub, conn: conn, send: make(chan []byte, 256)}
 	peer.hub.register <- peer
 	// query for the longest chain
-	if err := peer.conn.WriteJSON(QueryChainLengthMsg()); err != nil {
-		log.Println("addWS: failed to query longest chain")
-	}
+	/*
+		if err := peer.conn.WriteJSON(QueryChainLengthMsg()); err != nil {
+			log.Println("addWS: failed to query longest chain")
+		}*/
 
 	// Allow collection of memory referenced by the caller by doing all work in
 	// new goroutines.
 	go peer.writePump()
 	go peer.readPump()
+
+	peer.sendMsg(QueryChainLengthMsg())
 }
 
 // readPump pumps messages from the websocket connection to the hub.
@@ -159,12 +165,13 @@ func (p *Peer) readPump() {
 		switch receivedMsg.Type {
 		case MsgTypeQueryAll:
 			//write response chain message
-			p.conn.WriteJSON(QueryChainLengthMsg())
+			//p.conn.WriteJSON(QueryChainLengthMsg())
+			p.sendMsg(QueryChainLengthMsg())
 		case MsgTypeQueryLatest:
 			// write repsonse latest msg
-			p.conn.WriteJSON(QueryAllMsg())
+			//p.conn.WriteJSON(QueryAllMsg())
+			p.sendMsg(QueryAllMsg())
 		case MsgTypeRespBlockchain:
-			// TODO: handleblockchainresponse
 			receivedMsg.HandleBlockchainResp()
 		default:
 			log.Fatal("Unknown message type")
@@ -194,7 +201,7 @@ func (p *Peer) writePump() {
 				return
 			}
 
-			err := p.conn.WriteJSON(message)
+			err := p.conn.WriteMessage(websocket.TextMessage, message)
 			if err != nil {
 				return
 			}

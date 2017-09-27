@@ -13,7 +13,7 @@ type Block struct {
 	Index     uint64 `json:"id"`
 	Timestamp int64  `json:"timestamp"`
 	PrevHash  []byte `json:"prevhash"`
-	Data      []byte `json:"data"`
+	Data      string `json:"data"`
 	Hash      []byte `json:"hash"`
 }
 
@@ -32,16 +32,17 @@ const (
 func (b *Blockchain) Init() {
 	// Generate genesis block
 	var e = make([]byte, HashLen)
-	timeNow := time.Now().UTC().Unix()
-	genesisHash := CalculateHash(0, timeNow, e, e)
-	genesisBlock := Block{0, timeNow, e, e, genesisHash}
+	//timeNow := time.Now().UTC().Unix()
+	data := "Gensis Block"
+	genesisHash := CalculateHash(0, 0, e, data)
+	genesisBlock := Block{0, 0, e, data, genesisHash}
 
 	// Append to blockchain
 	b.blockchain = append(b.blockchain, genesisBlock)
 }
 
 // CalculateHash calculates the hash of a block
-func CalculateHash(index uint64, ts int64, prevHash []byte, data []byte) []byte {
+func CalculateHash(index uint64, ts int64, prevHash []byte, data string) []byte {
 	if len(prevHash) != HashLen {
 		log.Fatal("CalculateHash(): Previous hash is not 32 bytes")
 	}
@@ -58,7 +59,7 @@ func CalculateHash(index uint64, ts int64, prevHash []byte, data []byte) []byte 
 	h.Write(t)
 
 	h.Write(prevHash)
-	h.Write(data)
+	h.Write([]byte(data))
 
 	log.Printf("Calculated hash: %x\n", h.Sum(nil))
 	return h.Sum(nil)
@@ -70,13 +71,15 @@ func CalculateHashForBlock(block *Block) []byte {
 }
 
 // GenerateNextBlock generates next block in the chain
-func (b *Blockchain) GenerateNextBlock(blockData []byte) *Block {
+// And update blockchain
+func (b *Blockchain) GenerateNextBlock(blockData string) bool {
 	prevBlock := b.GetLatestBlock()
 	nextIndex := prevBlock.Index + 1
 	nextTimestamp := time.Now().UTC().Unix()
-	nextHash := CalculateHash(nextIndex, nextTimestamp, prevBlock.PrevHash, blockData)
+	nextHash := CalculateHash(nextIndex, nextTimestamp, prevBlock.Hash, blockData)
 
-	return &Block{nextIndex, nextTimestamp, prevBlock.PrevHash, blockData, nextHash}
+	b.blockchain = append(b.blockchain, Block{nextIndex, nextTimestamp, prevBlock.Hash, blockData, nextHash})
+	return true
 }
 
 // GetGenesisBlock retrives the first block in the chain
