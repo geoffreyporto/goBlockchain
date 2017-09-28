@@ -1,6 +1,6 @@
 # goBlockchain
 ### Motivation
-A simple blockchain written in Golang to understand the basics of cryptocurrencies. Inspired by [Ihartikk's implmentation] (https://github.com/lhartikk/naivechain)
+A simple blockchain written in Golang to understand the basics of cryptocurrencies. Inspired by [Ihartikk's implmentation](https://github.com/lhartikk/naivechain)
 
 ### Usage
 
