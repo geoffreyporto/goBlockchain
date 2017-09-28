@@ -19,6 +19,14 @@ type Message struct {
 	Data []Block `json:"data"`
 }
 
+type BlockData struct {
+	Data string `json:"data"`
+}
+
+type peerStr struct {
+	Peer string `json:"peer"`
+}
+
 var addr = flag.String("addr", "localhost:9001", "http service address")
 var initialPeers = flag.String("peers", "", "initial peers with the format host1:port1,host2:port2,...")
 
@@ -59,10 +67,6 @@ func GetBlocks(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(b.blockchain)
 }
 
-type BlockData struct {
-	Data string `json:"data"`
-}
-
 // MineBlock handles the /mineBlock REST post
 func MineBlock(w http.ResponseWriter, r *http.Request) {
 	// Checks for the block in data field
@@ -94,10 +98,6 @@ func GetPeers(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(p)
 }
 
-type peerStr struct {
-	Peer string `json:"peer"`
-}
-
 // AddPeer handles the /addPeer REST post
 func AddPeer(w http.ResponseWriter, r *http.Request) {
 	// Connect to the peer
@@ -115,7 +115,6 @@ func AddPeer(w http.ResponseWriter, r *http.Request) {
 
 // HandleBlockchainResp
 func (m *Message) HandleBlockchainResp() {
-	// TODO: check if arrays that are unmarshalled are in the order pre marshalling
 	latestBlockReceived := m.Data[len(m.Data)-1]
 	latestBlockHeld := *b.GetLatestBlock()
 

@@ -86,6 +86,7 @@ func (b *Blockchain) GenerateNextBlock(blockData string) bool {
 func (b *Blockchain) GetGenesisBlock() *Block {
 	if len(b.blockchain) < 1 {
 		log.Println("Did not initialize blockchain")
+		return nil
 	}
 	return &b.blockchain[0]
 }
@@ -112,7 +113,7 @@ func IsValidNewBlock(newBlock, prevBlock *Block) bool {
 }
 
 // IsValidChain checks if the chain received is valid
-func IsValidChain(newBlockchain []Block) bool { // TODO: pass by ref?
+func IsValidChain(newBlockchain []Block) bool {
 	// newBlockchain is in JSON format
 	// Check if the genesis block matches
 	if !reflect.DeepEqual(newBlockchain[0], b.blockchain[0]) {

@@ -89,7 +89,6 @@ func (h *Hub) run() {
 	}
 }
 
-// TODO: use this vs using p.conn.WriteJSON()
 func (p *Peer) sendMsg(m *Message) {
 	encodedMsg, err := json.Marshal(*m)
 	//encodedMsg, err := binary.Write(m)
