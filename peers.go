@@ -123,17 +123,13 @@ func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 func addWs(hub *Hub, conn *websocket.Conn) {
 	peer := &Peer{hub: hub, conn: conn, send: make(chan []byte, 256)}
 	peer.hub.register <- peer
-	// query for the longest chain
-	/*
-		if err := peer.conn.WriteJSON(QueryChainLengthMsg()); err != nil {
-			log.Println("addWS: failed to query longest chain")
-		}*/
 
 	// Allow collection of memory referenced by the caller by doing all work in
 	// new goroutines.
 	go peer.writePump()
 	go peer.readPump()
 
+	// query for the longest chain
 	peer.sendMsg(QueryChainLengthMsg())
 }
 
@@ -160,21 +156,18 @@ func (p *Peer) readPump() {
 				log.Printf("unexpected close error: %v", err)
 			}
 			break
-		}
-		// Do the writing in the writePump()
-		switch receivedMsg.Type {
-		case MsgTypeQueryAll:
-			//write response chain message
-			//p.conn.WriteJSON(QueryChainLengthMsg())
-			p.sendMsg(QueryChainLengthMsg())
-		case MsgTypeQueryLatest:
-			// write repsonse latest msg
-			//p.conn.WriteJSON(QueryAllMsg())
-			p.sendMsg(QueryAllMsg())
-		case MsgTypeRespBlockchain:
-			receivedMsg.HandleBlockchainResp()
-		default:
-			log.Fatal("Unknown message type")
+		} else {
+			// Do the writing in the writePump()
+			switch receivedMsg.Type {
+			case MsgTypeQueryAll:
+				//write response chain message
+				p.sendMsg(RespChainMsg())
+			case MsgTypeQueryLatest:
+				// write repsonse latest msg
+				p.sendMsg(RespLatestMsg())
+			case MsgTypeRespBlockchain:
+				receivedMsg.HandleBlockchainResp()
+			}
 		}
 	}
 }

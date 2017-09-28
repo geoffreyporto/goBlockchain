@@ -118,14 +118,9 @@ func (m *Message) HandleBlockchainResp() {
 	// TODO: check if arrays that are unmarshalled are in the order pre marshalling
 	latestBlockReceived := m.Data[len(m.Data)-1]
 	latestBlockHeld := *b.GetLatestBlock()
-	//log.Println(latestBlockReceived)
 
 	if latestBlockReceived.Index > latestBlockHeld.Index {
 		log.Println("HandleBlockchainResp: blockchain is not the latest")
-		//log.Println("latestBlockHeld.Hash: ", latestBlockHeld.Hash)
-		//log.Println("latestBlockReceived.PrevHash: ", latestBlockReceived.PrevHash)
-		//log.Println("latestBlockReceived.Data: ", latestBlockReceived.Data)
-		//log.Println("latestBlockReceived.Hash: ", latestBlockReceived.Hash)
 		if reflect.DeepEqual(latestBlockHeld.Hash, latestBlockReceived.PrevHash) {
 			log.Println("newHash and Prevhash matches")
 			if b.AddBlock(latestBlockReceived) {
