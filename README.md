@@ -1,4 +1,5 @@
 # goBlockchain
+[![Build Status](https://travis-ci.org/thejshen/goBlockchain.svg?branch=master)](https://travis-ci.org/thejshen/goBlockchain)
 ### Motivation
 A simple blockchain written in Golang to understand the basics of cryptocurrencies. Inspired by [Ihartikk's implmentation](https://github.com/lhartikk/naivechain)
 
